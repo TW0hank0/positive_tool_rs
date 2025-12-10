@@ -1,0 +1,12 @@
+[package]
+repository = "https://github.com/HankBh/positive_tool-rs"
+name = "positive_tool_rs"
+version = "0.5.0"
+edition = "2024"
+description = "`ptrs`一個rust的工具"
+license = "AGPL v3"
+
+[dependencies]
+log = { version = "0.4.28" }
+log4rs = { version = "1.4.0", delault-features = false, features = [] }
+colored = { version = "3.0.0" }

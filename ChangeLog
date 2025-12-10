@@ -1,0 +1,59 @@
+# ptrs
+
+## 0.1.0
+
+- beta release
+
+## 0.2.0
+
+**BREAKING UPDATE**
+
+### 更改
+
+- build_logger return Result now.
+- build_logger的console_logger時間部分有顏色
+
+## 0.3.0
+
+**BREAKING UPDATE**
+
+### 更改
+
+- 模組匯入方式
+- 日志顏色
+
+## 0.4.0
+
+### 更改
+- 日志系統增加參數
+- 日志系統debug編譯模式使用trace level
+
+## 0.5.0
+
+### 新增
+
+- `LICENSE`檔案
+
+## 0.5.1
+
+### 更改
+
+- 整理程式碼
+
+## 0.6.0
+
+### 新增
+
+- `README.md`檔案
+
+## 0.6.1
+
+### 修復
+
+- `Cargo.toml`檔案的錯誤
+
+## 0.6.2
+
+### 修復
+
+- 無用的程式碼
