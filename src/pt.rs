@@ -95,7 +95,8 @@ pub fn find_project_root_path(project_name: &str) -> io::Result<PathBuf> {
 /// ```
 pub fn build_logger(
     log_file_path: PathBuf,
-    release_log_file_level: Option<log::LevelFilter>,
+    #[cfg(debug_assertions)] _release_log_file_level: Option<log::LevelFilter>,
+    #[cfg(not(debug_assertions))] release_log_file_level: Option<log::LevelFilter>,
 ) -> io::Result<()> {
     let file_pattern: &str = "[{d(%Y-%m-%d %H:%M:%S)}] | {T} | {l} | [{f}:{L}::{M}] | {m}{n}";
 
@@ -143,26 +144,21 @@ pub fn build_logger(
         )))
         .build();
     // 建立總設定 Config
-    let mut prepare_config_file_filter: Box<log4rs::filter::threshold::ThresholdFilter>;
-    prepare_config_file_filter = Box::new(log4rs::filter::threshold::ThresholdFilter::new(
-        log::LevelFilter::Info,
-    ));
     #[cfg(debug_assertions)]
-    {
-        prepare_config_file_filter = Box::new(log4rs::filter::threshold::ThresholdFilter::new(
+    let prepare_config_file_filter = {
+        Box::new(log4rs::filter::threshold::ThresholdFilter::new(
             log::LevelFilter::Trace,
-        ));
-    }
+        ))
+    };
     #[cfg(not(debug_assertions))]
-    {
+    let prepare_config_file_filter = {
         match release_log_file_level {
-            Some(i) => {
-                prepare_config_file_filter =
-                    Box::new(log4rs::filter::threshold::ThresholdFilter::new(i));
-            }
-            _ => {}
+            Some(i) => Box::new(log4rs::filter::threshold::ThresholdFilter::new(i)),
+            _ => Box::new(log4rs::filter::threshold::ThresholdFilter::new(
+                log::LevelFilter::Info,
+            )),
         }
-    }
+    };
     //
     let config = log4rs::config::Config::builder()
         // 註冊檔案 appender
@@ -195,5 +191,41 @@ pub fn build_logger(
         Err(e) => {
             return Err(io::Error::new(io::ErrorKind::Other, e));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::pt::*;
+    use log::{debug, error, info, trace, warn};
+    use std::fs;
+
+    #[test]
+    fn test_find_project_root_path() {
+        assert_eq!(
+            find_project_root_path(env!("CARGO_PKG_NAME"))
+                .ok()
+                .unwrap()
+                .file_name()
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            "ptrs"
+        );
+    }
+
+    #[test]
+    fn test_build_logger() {
+        let test_tmp_file_path = find_project_root_path(env!("CARGO_PKG_NAME"))
+            .ok()
+            .unwrap()
+            .join("tmp_test_build_logger.log");
+        build_logger(test_tmp_file_path.clone(), None).ok().unwrap();
+        trace!("測試日志<追蹤>");
+        debug!("測試日志<除錯>");
+        info!("測試日志<資訊>");
+        warn!("測試日志<警告>");
+        error!("測試日志<錯誤>");
+        assert!(fs::exists(test_tmp_file_path).ok().unwrap());
     }
 }
