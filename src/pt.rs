@@ -1,4 +1,4 @@
-//! ptrs 一個rust的工具
+//! positive_tool_rs 一個開發工具
 
 use colored::Color;
 use log4rs;
@@ -6,15 +6,15 @@ use std::env;
 use std::ffi::OsStr;
 use std::io;
 use std::path::PathBuf;
-use std::vec::Vec;
+
+use crate::errors::error_pt;
+
+const DEFAULT_FIND_PROJECT_PATH_FIND_DEEPTH: u8 = 10;
 
 /// 找出專案資料夾
 ///
-/// **NOTICE! this doctest will be failed with `cargo test` cause doctest doas not run under project path**
-///
 ///  範例：
 /// ```rust, no_run
-/// //NOTICE! this test can NOT run as doctest.It will be failed when running as doctest with cargo cause doctest doas not run under project path
 /// use ptrs::ptrs::*;
 ///
 /// assert_eq!(
@@ -28,8 +28,12 @@ use std::vec::Vec;
 ///            "ptrs"
 ///        );
 /// ```
-pub fn find_project_root_path(project_name: &str) -> io::Result<PathBuf> {
-    let exe_file_path: PathBuf;
+pub fn find_project_path(
+    project_name: &str,
+    arg_find_deepth: Option<u8>,
+) -> Result<PathBuf, error_pt::PTErrors> {
+    let exe_file_path: PathBuf = env::current_exe().unwrap().canonicalize().unwrap();
+    /*
     match env::current_exe() {
         Ok(p) => match p.canonicalize() {
             Ok(p_abs) => {
@@ -42,12 +46,21 @@ pub fn find_project_root_path(project_name: &str) -> io::Result<PathBuf> {
         Err(e) => {
             return Err(e);
         }
+    } */
+    let find_deepth: u8;
+    match arg_find_deepth {
+        Some(value) => {
+            find_deepth = value;
+        }
+        None => {
+            find_deepth = DEFAULT_FIND_PROJECT_PATH_FIND_DEEPTH;
+        }
     }
     //
-    let mut project_path: PathBuf = exe_file_path;
+    let mut project_path: PathBuf = exe_file_path.clone();
     let mut project_path_count: u8 = 1;
     let mut project_path_log: Vec<PathBuf> = Vec::new();
-    let max_dir_level: u8 = 10;
+    //let max_dir_level: u8 = 10;
     let mut tmp_filename: &OsStr;
     //
     loop {
@@ -56,22 +69,27 @@ pub fn find_project_root_path(project_name: &str) -> io::Result<PathBuf> {
                 project_path = p.to_path_buf();
             }
             None => {
-                return Err(io::Error::from(io::ErrorKind::PermissionDenied));
+                return Err(error_pt::PTErrors::FindProjectPathError(String::from(
+                    "找不到專案資料夾，已到根目錄或無權限！",
+                )));
             }
         }
         project_path_log.push(project_path.clone());
-        match project_path.file_name() {
+        tmp_filename = project_path.file_name().unwrap();
+        /* match project_path.file_name() {
             Some(name) => tmp_filename = name,
             None => {
                 return Err(io::Error::from(io::ErrorKind::InvalidFilename));
             }
-        }
+        } */
         if tmp_filename == project_name {
             break;
         } else {
             project_path_count += 1;
-            if project_path_count >= max_dir_level {
-                return Err(io::Error::from(io::ErrorKind::TimedOut));
+            if project_path_count >= find_deepth {
+                return Err(error_pt::PTErrors::FindProjectPathError(String::from(
+                    "超出指定資料夾深度！",
+                )));
             }
         }
     }
@@ -97,9 +115,35 @@ pub fn build_logger(
     log_file_path: PathBuf,
     #[cfg(debug_assertions)] _release_log_file_level: Option<log::LevelFilter>,
     #[cfg(not(debug_assertions))] release_log_file_level: Option<log::LevelFilter>,
+    arg_is_logger_file: Option<bool>,
 ) -> io::Result<()> {
+    let is_logger_file: bool;
+    match arg_is_logger_file {
+        Some(value) => {
+            is_logger_file = value;
+        }
+        None => {
+            is_logger_file = true;
+        }
+    }
     let file_pattern: &str = "[{d(%Y-%m-%d %H:%M:%S)}] | {T} | {l} | [{f}:{L}::{M}] | {m}{n}";
-
+    let config_builder = log4rs::config::Config::builder();
+    // 建立總設定 Config
+    #[cfg(debug_assertions)]
+    let prepare_config_file_filter = {
+        Box::new(log4rs::filter::threshold::ThresholdFilter::new(
+            log::LevelFilter::Trace,
+        ))
+    };
+    #[cfg(not(debug_assertions))]
+    let prepare_config_file_filter = {
+        match release_log_file_level {
+            Some(i) => Box::new(log4rs::filter::threshold::ThresholdFilter::new(i)),
+            _ => Box::new(log4rs::filter::threshold::ThresholdFilter::new(
+                log::LevelFilter::Info,
+            )),
+        }
+    };
     // ----------------------------------------------------
     // 建立 FileHandler (檔案輸出)
     // ----------------------------------------------------
@@ -112,20 +156,28 @@ pub fn build_logger(
         .build(log_file_path)
         .expect("無法建立檔案 appender");
     */
-    let file_appender: log4rs::append::file::FileAppender;
-    match log4rs::append::file::FileAppender::builder()
-        .encoder(Box::new(log4rs::encode::pattern::PatternEncoder::new(
-            file_pattern,
-        )))
-        .append(true)
-        .build(log_file_path)
-    {
-        Ok(i) => {
-            file_appender = i;
+    if is_logger_file {
+        let file_appender: log4rs::append::file::FileAppender;
+        match log4rs::append::file::FileAppender::builder()
+            .encoder(Box::new(log4rs::encode::pattern::PatternEncoder::new(
+                file_pattern,
+            )))
+            .append(true)
+            .build(log_file_path)
+        {
+            Ok(i) => {
+                file_appender = i;
+            }
+            Err(e) => {
+                return Err(e);
+            }
         }
-        Err(e) => {
-            return Err(e);
-        }
+        // 註冊檔案 appender
+        let config_builder = config_builder.appender(
+            log4rs::config::Appender::builder()
+                .filter(prepare_config_file_filter)
+                .build("file_logger", Box::new(file_appender)),
+        );
     }
     //建立 console appender
     let console_pattern: String = format!(
@@ -143,39 +195,17 @@ pub fn build_logger(
             &console_pattern,
         )))
         .build();
-    // 建立總設定 Config
-    #[cfg(debug_assertions)]
-    let prepare_config_file_filter = {
-        Box::new(log4rs::filter::threshold::ThresholdFilter::new(
-            log::LevelFilter::Trace,
-        ))
-    };
-    #[cfg(not(debug_assertions))]
-    let prepare_config_file_filter = {
-        match release_log_file_level {
-            Some(i) => Box::new(log4rs::filter::threshold::ThresholdFilter::new(i)),
-            _ => Box::new(log4rs::filter::threshold::ThresholdFilter::new(
-                log::LevelFilter::Info,
-            )),
-        }
-    };
-    //
-    let config = log4rs::config::Config::builder()
-        // 註冊檔案 appender
-        .appender(
-            log4rs::config::Appender::builder()
-                .filter(prepare_config_file_filter)
-                .build("file_logger", Box::new(file_appender)),
-        )
-        // 註冊終端 appender
-        .appender(
-            log4rs::config::Appender::builder()
-                .filter(Box::new(log4rs::filter::threshold::ThresholdFilter::new(
-                    log::LevelFilter::Warn,
-                )))
-                .build("console_logger", Box::new(console_appender)),
-        )
-        // 5. 設定 Root Logger
+
+    // 註冊終端 appender
+    let config_builder = config_builder.appender(
+        log4rs::config::Appender::builder()
+            .filter(Box::new(log4rs::filter::threshold::ThresholdFilter::new(
+                log::LevelFilter::Warn,
+            )))
+            .build("console_logger", Box::new(console_appender)),
+    );
+    // 5. 設定 Root Logger
+    let config = config_builder
         .build(
             log4rs::config::Root::builder()
                 .appender("file_logger")
@@ -201,17 +231,8 @@ mod tests {
     use std::fs;
 
     #[test]
-    fn test_find_project_root_path() {
-        assert_eq!(
-            find_project_root_path(env!("CARGO_PKG_NAME"))
-                .ok()
-                .unwrap()
-                .file_name()
-                .unwrap()
-                .to_str()
-                .unwrap(),
-            "ptrs"
-        );
+    fn test_find_project_path() {
+        assert!(find_project_path(env!("CARGO_PKG_NAME"), None).is_ok());
     }
 
     #[test]

@@ -337,7 +337,7 @@ dependencies = [
 
 [[package]]
 name = "positive_tool_rs"
-version = "0.5.0"
+version = "0.7.0"
 dependencies = [
  "colored",
  "log",
