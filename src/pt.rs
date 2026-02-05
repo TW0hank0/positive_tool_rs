@@ -115,9 +115,9 @@ pub fn build_logger(
     log_file_path: PathBuf,
     #[cfg(debug_assertions)] _release_log_file_level: Option<log::LevelFilter>,
     #[cfg(not(debug_assertions))] release_log_file_level: Option<log::LevelFilter>,
-    arg_is_logger_file: Option<bool>,
+    //arg_is_logger_file: Option<bool>,
 ) -> io::Result<()> {
-    let is_logger_file: bool;
+    /* let is_logger_file: bool;
     match arg_is_logger_file {
         Some(value) => {
             is_logger_file = value;
@@ -125,7 +125,7 @@ pub fn build_logger(
         None => {
             is_logger_file = true;
         }
-    }
+    } */
     let file_pattern: &str = "[{d(%Y-%m-%d %H:%M:%S)}] | {T} | {l} | [{f}:{L}::{M}] | {m}{n}";
     let config_builder = log4rs::config::Config::builder();
     // 建立總設定 Config
@@ -156,29 +156,28 @@ pub fn build_logger(
         .build(log_file_path)
         .expect("無法建立檔案 appender");
     */
-    if is_logger_file {
-        let file_appender: log4rs::append::file::FileAppender;
-        match log4rs::append::file::FileAppender::builder()
-            .encoder(Box::new(log4rs::encode::pattern::PatternEncoder::new(
-                file_pattern,
-            )))
-            .append(true)
-            .build(log_file_path)
-        {
-            Ok(i) => {
-                file_appender = i;
-            }
-            Err(e) => {
-                return Err(e);
-            }
+    //TODO:待更改
+    let file_appender: log4rs::append::file::FileAppender;
+    match log4rs::append::file::FileAppender::builder()
+        .encoder(Box::new(log4rs::encode::pattern::PatternEncoder::new(
+            file_pattern,
+        )))
+        .append(true)
+        .build(log_file_path)
+    {
+        Ok(i) => {
+            file_appender = i;
         }
-        // 註冊檔案 appender
-        let config_builder = config_builder.appender(
-            log4rs::config::Appender::builder()
-                .filter(prepare_config_file_filter)
-                .build("file_logger", Box::new(file_appender)),
-        );
+        Err(e) => {
+            return Err(e);
+        }
     }
+    // 註冊檔案 appender
+    let config_builder = config_builder.appender(
+        log4rs::config::Appender::builder()
+            .filter(prepare_config_file_filter)
+            .build("file_logger", Box::new(file_appender)),
+    );
     //建立 console appender
     let console_pattern: String = format!(
         "\x1b[{}m[{{d(%Y-%m-%d %H:%M:%S)}}]\x1b[{}m | {{l}} | \x1b[{}m[\x1b[{}m{{f}}\x1b[{}m:{{L}}::{{M}}\x1b[{}m]\x1b[{}m | {{m}}{{n}}",
@@ -237,7 +236,7 @@ mod tests {
 
     #[test]
     fn test_build_logger() {
-        let test_tmp_file_path = find_project_root_path(env!("CARGO_PKG_NAME"))
+        let test_tmp_file_path = find_project_path(env!("CARGO_PKG_NAME"), None)
             .ok()
             .unwrap()
             .join("tmp_test_build_logger.log");
