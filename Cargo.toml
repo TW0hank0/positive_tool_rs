@@ -6,6 +6,9 @@ edition = "2024"
 description = "`positive_tool_rs`一個rust的工具"
 license = "AGPL-3.0-only"
 
+[lib]
+crate-type = ["rlib"]
+
 [dependencies]
 log = { version = "0.4.28" }
 log4rs = { version = "1.4.0", features = ["file_appender", "console_appender"] }
