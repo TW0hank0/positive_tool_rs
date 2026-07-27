@@ -1,0 +1,53 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# 著作權所有 (C) 2026 TW0hank0
+#
+# 本檔案屬於 positive_mahjong 專案的一部分。
+# 專案儲存庫：https://gitlab.com/TW0hank0/positive_mahjong
+#
+# 本程式為自由軟體：您可以根據自由軟體基金會發佈的 GNU Affero 通用公共授權條款
+# 第 3 版（僅此版本）重新發佈及/或修改本程式。
+#
+# 本程式的發佈是希望它能發揮功用，但不提供任何擔保；
+# 甚至沒有隱含的適銷性或特定目的適用性擔保。詳見 GNU Affero 通用公共授權條款。
+#
+# 您應該已經收到一份 GNU Affero 通用公共授權條款副本。
+# 如果沒有，請參見 <https://www.gnu.org/licenses/>。
+
+stages:
+  - sync
+
+sync_to_mirrors:
+  stage: sync
+  image: alpine:latest
+  before_script:
+    # 安裝必要工具
+    - apk add --no-cache git openssh-client curl bash
+    - curl -s https://gitlab.com/gitlab-org/incubation-engineering/mobile-devops/download-secure-files/-/raw/main/installer | bash
+
+    # 啟動 SSH Agent 並載入安全檔案中的私鑰
+    - eval $(ssh-agent -s) > /dev/null
+    - chmod 400 .secure_files/sync_bot
+    - ssh-add .secure_files/sync_bot > /dev/null 2>&1
+
+    # 建立信任主機
+    - mkdir -p ~/.ssh && chmod 700 ~/.ssh
+    - ssh-keyscan github.com codeberg.org >> ~/.ssh/known_hosts 2>/dev/null
+
+    # 設定 Bot 身份
+    - git config --global user.email "TW0hank0@noreply.codeberg.org"
+    - git config --global user.name "sync-bot-TW0hank0"
+
+    - git clone https://gitlab.com/TW0hank0/positive_tool_rs.git
+
+  script:
+    - cd positive_mahjong
+    # 設定遠端並推送
+    - git remote add github git@github.com:TW0hank0/positive_tool_rs.git
+    - git remote add codeberg git@codeberg.org:TW0hank0/positive_tool_rs.git
+    # 鏡像同步
+    - git push codeberg --force
+    - git push github --force
+    - cd ..
+
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH

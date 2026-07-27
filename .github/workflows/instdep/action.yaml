@@ -1,0 +1,82 @@
+name: Install Dep
+
+description: Install dep that workflows need
+
+runs:
+  using: composite
+  steps:
+    - name: Install uv
+      uses: astral-sh/setup-uv@v7
+
+    - name: check uv install
+      shell: pwsh
+      run: |
+        uv self version
+
+    - name: install rustup on Windows
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        Invoke-WebRequest -Uri "https://win.rustup.rs" -OutFile "rustup-init.exe"
+        ls
+        .\rustup-init.exe -y --profile minimal
+
+    - name: install rustup on Linux
+      shell: pwsh
+      if: runner.os == 'Linux'
+      run: |
+        curl https://sh.rustup.rs -o rust-init.sh
+        sh rust-init.sh -y
+        rustup target add x86_64-unknown-linux-musl
+
+    - name: check rust Install
+      shell: pwsh
+      run: |
+        rustup --version
+        rustc --version
+        cargo --version
+
+    - name: install Linux build needed dep
+      shell: pwsh
+      if: runner.os == 'Linux'
+      run: |
+        sudo apt-get update
+        sudo apt-get install libfontconfig1-dev pkg-config mold gcc -y
+
+    - name: install go
+      uses: actions/setup-go@v6
+      with:
+        go-version: "stable"
+
+    - name: use go to install addlicense tool
+      shell: pwsh
+      run: |
+        go install github.com/google/addlicense@latest
+        echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
+
+    - name: use cargo to install tools
+      shell: pwsh
+      run: |
+        cargo install cargo-audit cargo-msrv cargo-deny taplo-cli --locked
+        cargo install mdbook --locked
+        cargo install cargo-about --features="cli" --locked
+
+    - name: check tools installion
+      shell: pwsh
+      run: |
+        cargo about --version
+        cargo audit --version
+        cargo msrv --version
+        cargo deny --verison
+        taplo --version
+        mdbook --version
+        addlicense --version
+
+    - name: install java
+      uses: actions/setup-java@v5
+      with:
+        distribution: "temurin" # See 'Supported distributions' for available options
+        java-version: "21"
+
+    - name: Setup Android
+      uses: android-actions/setup-android@v4

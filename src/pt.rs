@@ -1,131 +1,78 @@
 //! positive_tool_rs 一個開發工具
 
+use std::{io, path::PathBuf};
+
+#[cfg(feature = "log")]
 use colored::Color;
+#[cfg(feature = "log")]
 use log4rs;
-use std::env;
-use std::ffi::OsStr;
-use std::io;
-use std::path::PathBuf;
 
-use crate::errors::error_pt;
+#[cfg(feature = "tracing")]
+use tracing_appender;
+#[cfg(feature = "tracing")]
+use tracing_subscriber::{self, Layer, layer::SubscriberExt, util::SubscriberInitExt};
 
-const DEFAULT_FIND_PROJECT_PATH_FIND_DEEPTH: u8 = 10;
-
-/// 找出專案資料夾
+/// 初始化 tracing 日誌
 ///
-///  範例：
 /// ```rust, no_run
-/// use ptrs::ptrs::*;
+/// use std::path::PathBuf;
+/// use positive_tool_rs::pt::init_tracing;
 ///
-/// assert_eq!(
-///            find_project_root_path(env!("CARGO_PKG_NAME"))
-///                .ok()
-///                .unwrap()
-///                .file_name()
-///                .unwrap()
-///                .to_str()
-///                .unwrap(),
-///            "ptrs"
-///        );
+/// let _guard = init_tracing(PathBuf::from("logs"), None);
 /// ```
-pub fn find_project_path(
-    project_name: &str,
-    arg_find_deepth: Option<u8>,
-) -> Result<PathBuf, error_pt::PTErrors> {
-    let exe_file_path: PathBuf = env::current_exe().unwrap().canonicalize().unwrap();
-    /*
-    match env::current_exe() {
-        Ok(p) => match p.canonicalize() {
-            Ok(p_abs) => {
-                exe_file_path = p_abs;
-            }
-            Err(e) => {
-                return Err(e);
-            }
-        },
-        Err(e) => {
-            return Err(e);
+#[cfg(feature = "tracing")]
+pub fn init_tracing(
+    log_dir: PathBuf,
+    file_name_prefix: Option<String>,
+) -> tracing_appender::non_blocking::WorkerGuard {
+    let file_appender: tracing_appender::rolling::RollingFileAppender;
+    match tracing_appender::rolling::Builder::new()
+        .rotation(tracing_appender::rolling::Rotation::DAILY)
+        .filename_prefix(file_name_prefix.unwrap_or(String::from("log")))
+        .filename_suffix(String::from("log"))
+        .max_log_files(100)
+        .build(log_dir)
+    {
+        Ok(item) => {
+            file_appender = item;
         }
-    } */
-    let find_deepth: u8;
-    match arg_find_deepth {
-        Some(value) => {
-            find_deepth = value;
-        }
-        None => {
-            find_deepth = DEFAULT_FIND_PROJECT_PATH_FIND_DEEPTH;
+        Err(err) => {
+            panic!("file appender build failed, err: {:?}", err);
         }
     }
-    //
-    let mut project_path: PathBuf = exe_file_path.clone();
-    let mut project_path_count: u8 = 1;
-    let mut project_path_log: Vec<PathBuf> = Vec::new();
-    //let max_dir_level: u8 = 10;
-    let mut tmp_filename: &OsStr;
-    //
-    loop {
-        match project_path.parent() {
-            Some(p) => {
-                project_path = p.to_path_buf();
-            }
-            None => {
-                return Err(error_pt::PTErrors::FindProjectPathError(String::from(
-                    "找不到專案資料夾，已到根目錄或無權限！",
-                )));
-            }
-        }
-        project_path_log.push(project_path.clone());
-        tmp_filename = project_path.file_name().unwrap();
-        /* match project_path.file_name() {
-            Some(name) => tmp_filename = name,
-            None => {
-                return Err(io::Error::from(io::ErrorKind::InvalidFilename));
-            }
-        } */
-        if tmp_filename == project_name {
-            break;
-        } else {
-            project_path_count += 1;
-            if project_path_count >= find_deepth {
-                return Err(error_pt::PTErrors::FindProjectPathError(String::from(
-                    "超出指定資料夾深度！",
-                )));
-            }
-        }
-    }
-    return Ok(project_path);
+    let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
+    let stdout_layer = tracing_subscriber::fmt::layer()
+        .pretty()
+        .with_writer(io::stdout)
+        .with_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or(tracing_subscriber::EnvFilter::new("info")),
+        );
+    let file_layer = tracing_subscriber::fmt::layer()
+        .json()
+        .with_current_span(true)
+        .with_span_list(true)
+        .with_file(true)
+        .with_line_number(true)
+        .with_level(true)
+        .with_thread_ids(true)
+        .with_ansi(false)
+        .with_writer(non_blocking)
+        .with_filter(tracing_subscriber::EnvFilter::new("debug"));
+    tracing_subscriber::registry()
+        .with(stdout_layer)
+        .with(file_layer)
+        .init();
+    guard
 }
 
-/// 使用 `log4rs` 建立日志功能
-///
-/// **Args:**
-///
-/// ```rust, ignore
-/// log_file_path: PathBuf
-/// ```
-///
-/// 日志檔案的位子
-///
-/// **Return:**
-///
-/// ```rust, ignore
-/// io::Result<()>
-/// ```
+/// 使用 `log4rs` 初始化日誌
+#[cfg(feature = "log")]
 pub fn build_logger(
     log_file_path: PathBuf,
     #[cfg(debug_assertions)] _release_log_file_level: Option<log::LevelFilter>,
     #[cfg(not(debug_assertions))] release_log_file_level: Option<log::LevelFilter>,
-    //arg_is_logger_file: Option<bool>,
 ) -> io::Result<()> {
-    /* let is_logger_file: bool;
-    match arg_is_logger_file {
-        Some(value) => {
-            is_logger_file = value;
-        }
-        None => {
-            is_logger_file = true;
-        }
-    } */
     let file_pattern: &str = "[{d(%Y-%m-%d %H:%M:%S)}] | {T} | {l} | [{f}:{L}::{M}] | {m}{n}";
     let config_builder = log4rs::config::Config::builder();
     // 建立總設定 Config
@@ -144,19 +91,6 @@ pub fn build_logger(
             )),
         }
     };
-    // ----------------------------------------------------
-    // 建立 FileHandler (檔案輸出)
-    // ----------------------------------------------------
-    /*let file_appender: log4rs::append::file::FileAppender =
-    log4rs::append::file::FileAppender::builder()
-        .encoder(Box::new(log4rs::encode::pattern::PatternEncoder::new(
-            file_pattern,
-        )))
-        .append(true)
-        .build(log_file_path)
-        .expect("無法建立檔案 appender");
-    */
-    //TODO:待更改
     let file_appender: log4rs::append::file::FileAppender;
     match log4rs::append::file::FileAppender::builder()
         .encoder(Box::new(log4rs::encode::pattern::PatternEncoder::new(
@@ -225,27 +159,48 @@ pub fn build_logger(
 
 #[cfg(test)]
 mod tests {
-    use crate::pt::*;
-    use log::{debug, error, info, trace, warn};
-    use std::fs;
+    use std::{fs, path::PathBuf};
 
-    #[test]
-    fn test_find_project_path() {
-        assert!(find_project_path(env!("CARGO_PKG_NAME"), None).is_ok());
-    }
-
+    #[cfg(feature = "log")]
+    use crate::pt::build_logger;
+    #[cfg(feature = "tracing")]
+    use crate::pt::init_tracing;
+    #[cfg(feature = "log")]
     #[test]
     fn test_build_logger() {
-        let test_tmp_file_path = find_project_path(env!("CARGO_PKG_NAME"), None)
-            .ok()
-            .unwrap()
-            .join("tmp_test_build_logger.log");
-        build_logger(test_tmp_file_path.clone(), None).ok().unwrap();
+        use log::{debug, error, info, trace, warn};
+        build_logger(
+            PathBuf::from("target").join("test").join("tmp_log.log"),
+            None,
+        )
+        .ok();
         trace!("測試日志<追蹤>");
         debug!("測試日志<除錯>");
         info!("測試日志<資訊>");
         warn!("測試日志<警告>");
         error!("測試日志<錯誤>");
-        assert!(fs::exists(test_tmp_file_path).ok().unwrap());
+        assert!(
+            fs::exists(PathBuf::from("target").join("test").join("tmp_log.log"))
+                .ok()
+                .unwrap()
+        );
+    }
+
+    #[cfg(feature = "tracing")]
+    #[test]
+    fn test_init_tracing() {
+        use tracing::{debug, error, info, trace, warn};
+        if !fs::exists(PathBuf::from("target").join("test").join("init_tracing")).unwrap_or(false) {
+            fs::create_dir_all(PathBuf::from("target").join("test").join("init_tracing")).ok();
+        }
+        let _guard = init_tracing(
+            PathBuf::from("target").join("test").join("init_tracing"),
+            None,
+        );
+        trace!("測試日志<追蹤>");
+        debug!("測試日志<除錯>");
+        info!("測試日志<資訊>");
+        warn!("測試日志<警告>");
+        error!("測試日志<錯誤>");
     }
 }

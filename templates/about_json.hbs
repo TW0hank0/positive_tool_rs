@@ -1,0 +1,18 @@
+{
+"dependencies": [
+{{#each licenses}}
+{
+"license_id": "{{id}}",
+"used_by": [
+{{#each used_by}}
+{
+"name": "{{crate.name}}",
+"version": "{{crate.version}}",
+"repository": "{{#if crate.repository}}{{crate.repository}}{{else}}https://crates.io/crates/{{crate.name}}{{/if}}"
+}{{#if @last}}{{else}},{{/if}}
+{{/each}}],
+"license_text": {{json text}}
+}{{#if @last}}{{else}},{{/if}}
+{{/each}}
+]
+}

@@ -1,0 +1,27 @@
+# positive_mahjong Third Party License
+
+所有使用的協議：
+{{#each overview}}
+- {{{name}}} ({{id}}) × {{count}}
+{{/each}}
+
+第三方專案/模組庫：
+
+{{#each licenses}}
+
+### {{name}} ({{id}})
+
+由下列程式使用：
+
+{{#each used_by}}
+- [{{crate.name}}]({{#if
+crate.repository}}{{crate.repository}}{{else}}https://crates.io/crates/{{crate.name}}{{/if}})
+{{/each}}
+
+{{{text}}}
+
+---
+
+{{/each}}
+
+---

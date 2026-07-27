@@ -1,21 +1,23 @@
 [package]
-repository = "https://github.com/TW0hank0/positive_tool_rs"
+repository = "https://gitlab.com/TW0hank0/positive_tool_rs"
 name = "positive_tool_rs"
 version = "0.7.0"
 edition = "2024"
-description = "`positive_tool_rs`一個rust的工具"
+description = "`positive_tool_rs` 一個rust的工具"
 license = "AGPL-3.0-only"
 
-[lib]
-crate-type = ["rlib"]
-
 [dependencies]
-log = { version = "0.4.28" }
-log4rs = { version = "1.4.0", features = ["file_appender", "console_appender"] }
-colored = { version = "3.0.0" }
-time = { version = "0.3.44", features = ["formatting"], optional = true }
+# log
+log = { version = "0.4.28", optional=true }
+log4rs = { version = "1.4.0", features = ["file_appender", "console_appender"], optional=true }
+colored = { version = "3.0.0", optional=true }
+# tracing
+tracing = {version="0.1.44", optional=true}
+tracing-subscriber = { version = "0.3.23", features = ["env-filter", "fmt", "ansi", "json"], optional=true}
+tracing-appender = {version="0.2.5", optional=true}
 
 
 [features]
-tool_time = ["dep:time"]
-default = []
+log = ["dep:log", "dep:log4rs", "dep:colored"]
+tracing = ["dep:tracing", "dep:tracing-subscriber", "dep:tracing-appender"]
+default = ["tracing"]

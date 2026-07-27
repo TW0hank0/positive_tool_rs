@@ -1,2 +1,2 @@
 /target
-tmp_*
+**/__pycache__/**
