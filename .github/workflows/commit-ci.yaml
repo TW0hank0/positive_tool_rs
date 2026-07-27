@@ -1,0 +1,213 @@
+name: commit-ci
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  check:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Install Dep
+        uses: ./.github/workflows/instdep
+
+      - name: Run debug check
+        run: cargo check --workspace
+
+      - name: Run release check
+        run: cargo check --release --workspace
+
+      - name: Run License Check
+        run: |
+          echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
+          uv run scripts/license_check.py
+
+      - name: Lint toml file
+        run: taplo lint
+
+      - name: Run cargo-msrv script
+        run: uv run scripts/cargo_msrv.py
+
+      - name: Run cargo-audit
+        run: cargo audit
+
+      - name: Run cargo-deny
+        run: |
+          cargo deny fetch
+          cargo deny check
+
+  build_client_desktop:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Install Dep
+        uses: ./.github/workflows/instdep
+
+      - name: use build script
+        run: uv run scripts/build_client_desktop.py
+
+      - name: zip files on Linux
+        id: zip_files_linux
+        if: runner.os == 'Linux'
+        run: |
+          file=$(uv run scripts/zip_client_desktop.py)
+          echo "zip_path=$file" >> $GITHUB_OUTPUT
+
+      - name: zip files on Windows
+        id: zip_files_windows
+        if: runner.os == 'Windows'
+        run: |
+          $file = (uv run scripts/zip_client_desktop.py)
+          echo "zip_path=$file" >> $env:GITHUB_OUTPUT
+
+      - name: Upload exe artifact on Linux
+        uses: actions/upload-artifact@v6
+        if: runner.os == 'Linux'
+        with:
+          name: ${{ steps.zip_files_linux.outputs.zip_path }}
+          path: ${{ steps.zip_files_linux.outputs.zip_path }}
+
+      - name: Upload exe artifact on Windows
+        uses: actions/upload-artifact@v6
+        if: runner.os == 'Windows'
+        with:
+          name: ${{ steps.zip_files_windows.outputs.zip_path }}
+          path: ${{ steps.zip_files_windows.outputs.zip_path }}
+
+  # build_android:
+  #     runs-on: ${{ matrix.os }}
+  #     strategy:
+  #         fail-fast: false
+  #         matrix:
+  #             os: [ubuntu-latest]
+  #     steps:
+  #         - name: Checkout Repository
+  #           uses: actions/checkout@v6
+  #         - name: Checkout Secret
+  #           uses: actions/checkout@v6
+  #           with:
+  #               repository: ${{ secrets.SECRET_REPO }} # Android Keystore Repo
+  #               ssh-key: ${{ secrets.SECRET_REPO_TOKEN }} # Repo ssh-key
+  #               path: .secret
+  #         - name: Install Dep
+  #           uses: ./.github/workflows/instdep
+  #         - name: install java
+  #           uses: actions/setup-java@v5
+  #           with:
+  #               distribution: "temurin" # See 'Supported distributions' for available options
+  #               java-version: "21"
+  #         - name: install android target
+  #           run: |
+  #               rustup target add aarch64-linux-android
+  #               rustup update
+  #         - name: build apk
+  #           env:
+  #               CARGO_APK_RELEASE_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+  #           run: |
+  #               uv run scripts/build_android.py --ci
+  #         - name: Get package get_version
+  #           id: get_version
+  #           run: |
+  #               version=$(uv run scripts/ci/get_version.py)
+  #               echo "version=$version" >> $GITHUB_OUTPUT
+  #         - name: Rename apk file
+  #           run: |
+  #               uv run scripts/ci/rename_apk.py ${{ steps.get_version.outputs.version }}
+  #         - name: Upload apk artifact
+  #           uses: actions/upload-artifact@v6
+  #           with:
+  #               name: pmj_client_${{ steps.get_version.outputs.version }}.apk
+  #               path: target/release/apk/pmj_client_${{ steps.get_version.outputs.version }}.apk
+
+  upload_builds:
+    needs:
+      - build_client_desktop
+      #- build_android
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: checkout code
+        uses: actions/checkout@v6
+
+      - name: install Dep
+        uses: ./.github/workflows/instdep
+
+      - name: prepare CI Venv
+        run: |
+          uv venv --python cpython-3.14
+
+      - name: download all artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+
+      - name: get datetime
+        id: get_datetime
+        run: |
+          datetime=$(uv run scripts/ci/get_datetime.py)
+          echo "datetime=$datetime" >> $GITHUB_OUTPUT
+
+      - name: get package get_version
+        id: get_version
+        run: |
+          version=$(uv run scripts/ci/get_version.py)
+          echo "version=$version" >> $GITHUB_OUTPUT
+
+      - name: List Dir (for debug)
+        run: |
+          ls .
+          echo '--------'
+          ls artifacts
+          echo '--------'
+          ls -la artifacts
+
+      - name: prerelease
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo '----create_release----'
+          gh release create "ci-pre-v${{ steps.get_version.outputs.version }}-${{ github.sha }}" \
+            --title "pre-release: ${{ steps.get_version.outputs.version }}+${{ steps.get_datetime.outputs.datetime }} (${{ github.sha }})" \
+            --notes "**這是使用Github Action製作的測試版**
+            - 版本： ${{ steps.get_version.outputs.version }}
+            - 時間： ${{ steps.get_datetime.outputs.datetime }}
+            - github_sha： ${{ github.sha }}" \
+            --prerelease \
+            --repo="${{ github.repository }}"
+          echo '----Get Upload Url----'
+          upload_url_base=$(gh api \
+            repos/${{ github.repository }}/releases/tags/ci-pre-v${{ steps.get_version.outputs.version }}-${{ github.sha }} \
+            --jq '.upload_url')
+          echo 'upload_url_base=$upload_url_base'
+          echo '----upload----'
+          set -euo pipefail
+          upload_url="${upload_url_base%\{*}"
+          echo "Uploading artifacts to $upload_url"
+          shopt -s globstar || true
+          for f in artifacts/**; do
+            if [ -f "$f" ]; then
+              echo "Uploading $f"
+              curl -X POST \
+                -H "Authorization: token $GITHUB_TOKEN" \
+                -H "Content-Type: application/octet-stream" \
+                --data-binary @"$f" \
+                "$upload_url?name=$(basename "$f")"
+            fi
+          done
